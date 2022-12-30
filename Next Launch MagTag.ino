@@ -1,3 +1,5 @@
+
+
 /* 
 Function: Connnects to the launch library API and displays name date and description of
 the latest or upcoming launch on an E ink Display
@@ -7,13 +9,15 @@ Date Created: 12/17/22
 
 */
 
-
+#include <TimeLib.h>
 
 #include <ArduinoJson.h>
 #include <ArduinoJson.hpp>
 
 #include "Adafruit_ThinkInk.h"
 #include "Anita_semi_square9pt7b.h"
+#include "Anita_semi_square8pt7b.h"
+#include "Bitmaps.h"
 
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -36,6 +40,12 @@ ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY)
 
 
 #define RSTButton 15
+
+
+const int UTC_Correction = -5; //Offset in housrs of current time zone from UTC
+tmElements_t UTC_Launch_Time;
+time_t old_unix;
+time_t new_unix;
 
 
 WiFiClient client;
@@ -82,12 +92,14 @@ void ManualReset() {
 
   //display.begin(THINKINK_GRAYSCALE4);
   display.clearBuffer();
-  display.setFont(&Anita_semi_square9pt7b);
+  display.setFont(&Anita_semi_square8pt7b);
   display.setTextColor(EPD_BLACK);
   display.setCursor(0, 10);
   display.print("Wifi Reset.");
   display.setCursor(0, 30);
-  display.print("please connect to LaunchTag to enter credentials");
+  display.print("Please connect to SSID \"LaunchTag\" and enter WiFi credentials.");
+  display.drawBitmap(100,58,Git_QR_Bitmap_Small,60,60, EPD_BLACK);
+  display.display();
 
   WiFiManager wmr;
   wmr.resetSettings();
@@ -99,11 +111,13 @@ void ManualReset() {
     //ESP.restart
   }
 
-display.clearBuffer();
-display.setCursor(0, 10);
-display.print("Connected");
-display.setCursor(0, 30);
-display.print(WiFi.localIP());
+  display.clearBuffer();
+  display.setCursor(0, 10);
+  display.print("Connected");
+  display.setCursor(0, 30);
+  display.print(WiFi.localIP());
+  display.display();
+  delay(5000);
   
 }
 
@@ -162,21 +176,28 @@ void GetLaunch() {
 
     JsonObject Mission = Results["mission"];
     const char* Mission_Name = Mission["name"];
+    const char* Mission_Description = Mission["description"];
+
+    Time_Correction(Results_window_start);
 
 
     Serial.print("Launch name:");
     Serial.println(Results_name);
 
-
+    char buffer[400];
+    sprintf(buffer,"NEXT LAUNCH: %02d/%02d/%4d %02d:%02d:%02d \n %s \n %s",month(), day(), year(), hour(), minute(), second(),Results_name,Mission_Description );
     display.clearBuffer();
-    display.setFont(&Anita_semi_square9pt7b);
+    display.setFont(&Anita_semi_square8pt7b);
     display.setTextColor(EPD_BLACK);
     display.setCursor(0, 10);
+    display.print(buffer);
+    /* 
     display.print("Next Launch");
     display.setCursor(0, 30);
     display.print(Results_name);
     display.setCursor(0, 60);
-    display.printf("date: %s", Results_window_start);
+    display.printf("Date: %02d/%02d/%4d %02d:%02d:%02d", month(), day(), year(), hour(), minute(), second());
+    */
     display.display();
 
 
@@ -193,3 +214,24 @@ void GetLaunch() {
 
 
 }  //GetLaunch end
+
+
+
+
+void Time_Correction(String UTC_String)
+{
+UTC_Launch_Time.Second = UTC_String.substring(17,19).toInt();
+UTC_Launch_Time.Minute = UTC_String.substring(14,16).toInt();
+UTC_Launch_Time.Hour = UTC_String.substring(11,13).toInt();
+UTC_Launch_Time.Day = UTC_String.substring(8,10).toInt();
+UTC_Launch_Time.Month = UTC_String.substring(5,7).toInt(); //january is at index 0
+UTC_Launch_Time.Year = UTC_String.substring(0,4).toInt() - 1970; // should be number of years since 1970
+
+old_unix = makeTime(UTC_Launch_Time); //convert launch date/time into unix time
+new_unix = old_unix + UTC_Correction * SECS_PER_HOUR;
+setTime(new_unix);
+Serial.print("Unix launch time in EST: ");
+Serial.println(new_unix);
+Serial.printf("%02d/%02d/%4d %02d:%02d:%02d", day(), month(), year(), hour(), minute(), second());
+
+}
