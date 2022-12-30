@@ -12,7 +12,7 @@ Date Created: 12/17/22
 #include <TimeLib.h>
 
 #include <ArduinoJson.h>
-#include <ArduinoJson.hpp>
+#include <ArduinoJson.hpp> 
 
 #include "Adafruit_ThinkInk.h"
 #include "Anita_semi_square9pt7b.h"
