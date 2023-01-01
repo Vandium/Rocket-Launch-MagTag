@@ -23,12 +23,12 @@ Date Created: 12/17/22
 #include <HTTPClient.h>
 #include <WiFiManager.h>
 
-//E Ink display pin deffintions
-#define EPD_DC 7     // can be any pin, but required!
-#define EPD_CS 8     // can be any pin, but required!
-#define EPD_BUSY -1  // can set to -1 to not use a pin (will wait a fixed delay)
-#define SRAM_CS -1   // can set to -1 to not use a pin (uses a lot of RAM!)
-#define EPD_RESET 6  // can set to -1 and share with chip Reset (can't deep sleep)
+//E Ink display pin deffintions for MagTag
+#define EPD_DC 7     
+#define EPD_CS 8     
+#define EPD_BUSY -1  
+#define SRAM_CS -1   
+#define EPD_RESET 6  
 
 
 // 2.9" Grayscale for MagTag
@@ -47,6 +47,15 @@ tmElements_t UTC_Launch_Time;
 time_t old_unix;
 time_t new_unix;
 
+unsigned long Update_Interval = 1800000; //numbers of milliseconds between API calls. Note: withpout api key only 15 updates perr hour are allowed
+unsigned long Last_Update = 0;
+
+bool last_btnA_State = true; //buttons on magtag go LOW when pressed so logic is inverted
+unsigned long btnA_init_time = 0;
+unsigned int Reset_Hold_Time = 10000; //number of milliseconds the button must be held to clear the saved configuration
+
+
+
 
 WiFiClient client;
 
@@ -60,6 +69,7 @@ void setup() {
   display.begin(THINKINK_GRAYSCALE4);
 
   WiFiManager wm;
+  wm.setClass("invert"); //set the config portal to darkl theme
   bool res;
   res = wm.autoConnect("LaunchTag");
 
@@ -83,14 +93,14 @@ void setup() {
 
 
 
-  GetLaunch();
+  GetLaunch(); 
+  Last_Update = millis();
 }
 
 
 void ManualReset() {
   Serial.println("Manual Reset triggered.");
 
-  //display.begin(THINKINK_GRAYSCALE4);
   display.clearBuffer();
   display.setFont(&Anita_semi_square8pt7b);
   display.setTextColor(EPD_BLACK);
@@ -113,20 +123,42 @@ void ManualReset() {
 
   display.clearBuffer();
   display.setCursor(0, 10);
-  display.print("Connected");
-  display.setCursor(0, 30);
+  display.print("Sucessfully Connected to: ");
+  display.print(WiFi.SSID());
+  display.setCursor(0, 60);
+  display.print("IP Address: ");
   display.print(WiFi.localIP());
   display.display();
   delay(5000);
+
+  GetLaunch(); //update the display with launch data since we jsut connected to a network
   
 }
 
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  if (!digitalRead(BUTTON_A))
+
+  last_btnA_State = digitalRead(BUTTON_A); 
+
+  while(!digitalRead(BUTTON_A)) //put in a while loop so we do not go off doing some other task while button A is being held
   {
-    ManualReset();
+    if(last_btnA_State) //if the button was not previously pressed start the timer.
+    {
+      last_btnA_State = false;
+      btnA_init_time =  millis();
+    }
+
+    if((millis() - btnA_init_time) > Reset_Hold_Time)
+    {
+      ManualReset();
+    }
+  }
+
+
+  if((millis() - Last_Update) > Update_Interval) //get updated launch info after a period of time has elapsed
+  {
+    GetLaunch();
+    Last_Update = millis();
   }
 }
 
@@ -134,7 +166,7 @@ void loop() {
 void GetLaunch() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient client;
-    client.begin("https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=1&format=json&status=1");
+    client.begin("https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=1&format=json&ordering=status__ids");
     int httpCode = client.GET();
 
     String payload = client.getString();
@@ -149,9 +181,8 @@ void GetLaunch() {
       return;
     }
 
-    int count = doc["count"];  // 238
+    int count = doc["count"];  
     const char* next = doc["next"];
-    // doc["previous"] is null
 
     JsonObject Results = doc["results"][0];
     const char* Results_id = Results["id"];  // "bf91b6d9-f517-4198-843c-dc82dfa6f9b0"
@@ -185,11 +216,11 @@ void GetLaunch() {
     Serial.println(Results_name);
 
     char buffer[400];
-    sprintf(buffer,"NEXT LAUNCH: %02d/%02d/%4d %02d:%02d:%02d \n %s \n %s",month(), day(), year(), hour(), minute(), second(),Results_name,Mission_Description );
+    sprintf(buffer,"NEXT LAUNCH: \nDate: %02d/%02d/%4d \nTime: %02d:%02d:%02d \n %s \n",month(), day(), year(), hour(), minute(), second(),Results_name );
     display.clearBuffer();
     display.setFont(&Anita_semi_square8pt7b);
     display.setTextColor(EPD_BLACK);
-    display.setCursor(0, 10);
+    display.setCursor(0, 15);
     display.print(buffer);
     /* 
     display.print("Next Launch");
