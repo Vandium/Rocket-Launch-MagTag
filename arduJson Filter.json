@@ -1,0 +1,18 @@
+{
+    "results": [
+        {
+            "window_start": true,
+            "status": {
+                "id": true
+            },
+            "rocket": {
+                "configuration": {
+                    "name": true
+                }
+            },
+            "mission": {
+                "name": true
+            }
+        }
+    ]
+}
